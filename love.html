@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart Animation with Music</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .music-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .music-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        .settings-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        .panel {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            background: rgba(20, 20, 20, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            color: white;
+            display: none;
+            width: 250px;
+        }
+        .panel.active {
+            display: block;
+        }
+        .panel label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #ddd;
+        }
+        .panel input, .panel select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 6px;
+        }
+        .panel button {
+            width: 100%;
+            padding: 10px;
+            background: #ff3366;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .panel button:hover {
+            background: #ff194d;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Tombol Musik -->
+    <button class="music-btn" id="musicBtn" onclick="toggleMusic()">🎵 Play Musik</button>
+
+    <!-- Elemen Audio (Lagu romantis latar belakang) -->
+    <audio id="bgMusic" loop>
+        <source src="https://actions.google.com/sounds/v1/ambiences/romantic_music.ogg" type="audio/ogg">
+        Browser kamu tidak mendukung audio.
+    </audio>
+
+    <button class="settings-btn" onclick="togglePanel()">⚙️</button>
+    
+    <div class="panel" id="settingsPanel">
+        <label>Teks Utama (Tengah):</label>
+        <input type="text" id="mainTextInput" value="Sayang">
+        
+        <label>Teks Partikel:</label>
+        <input type="text" id="particleTextInput" value="I Love You">
+        
+        <label>Tema Warna:</label>
+        <select id="themeSelect">
+            <option value="red">Crimson Red</option>
+            <option value="pink">Soft Pink</option>
+            <option value="violet">Neon Violet</option>
+        </select>
+        
+        <button onclick="applySettings()">Terapkan & Ulangi</button>
+    </div>
+
+    <canvas id="heartCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let config = {
+            mainText: "Sayang",
+            particleText: "I Love You",
+            theme: "red"
+        };
+
+        // Kontrol Musik
+        const music = document.getElementById('bgMusic');
+        const musicBtn = document.getElementById('musicBtn');
+        let isPlaying = false;
+
+        function toggleMusic() {
+            if (isPlaying) {
+                music.pause();
+                musicBtn.innerText = "🎵 Play Musik";
+                isPlaying = false;
+            } else {
+                music.play().then(() => {
+                    musicBtn.innerText = "🔇 Pause Musik";
+                    isPlaying = true;
+                }).catch(e => {
+                    console.log("Audio play error:", e);
+                });
+            }
+        }
+
+        function togglePanel() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('active');
+        }
+
+        function applySettings() {
