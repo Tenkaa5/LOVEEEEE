@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Interactive Particle Morph — hehe lopyu bb!</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(
+          circle at 50% 42%,
+          #071326 0%,
+          #030712 58%,
+          #000000 100%
+        );
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        color: #e2e8f0;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+      }
+
+      .hud {
+        position: fixed;
+        left: 50%;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        max-width: 94vw;
+        padding: 8px 14px;
+        border-radius: 16px;
+        background: rgba(7, 12, 24, 0.84);
+        border: 1px solid rgba(56, 189, 248, 0.24);
+        font-size: 12px;
+        color: #94a3b8;
+        pointer-events: auto;
+      }
+
+      .glow-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #cbd5e1;
+        white-space: nowrap;
+      }
+
+      .glow-control input[type="range"] {
+        width: 84px;
+        accent-color: #22d3ee;
+        cursor: pointer;
+      }
+
+      .hud button {
+        background: rgba(34, 211, 238, 0.14);
+        color: #67e8f9;
+        border: 1px solid rgba(34, 211, 238, 0.35);
+        border-radius: 10px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.18s ease,
+          transform 0.12s ease;
+      }
+
+      .hud button:hover {
+        background: rgba(34, 211, 238, 0.26);
+      }
+
+      .hud button:active {
+        transform: scale(0.96);
+      }
+
+      @media (max-width: 540px) {
+        .hud {
+          font-size: 11px;
+          gap: 8px;
+          padding: 7px 11px;
+        }
+        .glow-control input[type="range"] {
+          width: 68px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="particleCanvas"></canvas>
+
+    <div class="hud">
+      <span id="hintLabel">Klik / sentuh untuk meledak</span>
+      <label class="glow-control" for="glowRange">
+        <span>Cahaya</span>
+        <input
+          id="glowRange"
+          type="range"
+          min="0.12"
+          max="1.10"
+          step="0.02"
+          value="0.45"
+        />
+      </label>
+      <button id="replayBtn" type="button">Ulangi</button>
+    </div>
+
+    <script>
+      // =========================================================================
+      // KUSTOMISASI TEKS: Ubah string di bawah ini sesuka hati Anda
+      // =========================================================================
+      const TARGET_TEXT = "hehe lopyu bb :3";
+
+      // Pengaturan animasi, cahaya & fisika partikel (opsional)
+      const CONFIG = {
+        glowIntensity: 0.45, // Atur kecerahan default (0.12 redup - 1.10 terang)
+        particleCount: window.innerWidth < 640 ? 1800 : 2800,
+        vortexCount: window.innerWidth < 640 ? 180 : 280,
+        autoMorphDelayMs: 4200,
+        explodeMorphDelayMs: 1100,
+        mouseRepelRadius: 115,
+        mouseRepelStrength: 1.55,
+        friction: 0.91,
+        springEase: 0.072,
+      };
+
+      const canvas = document.getElementById("particleCanvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const hintLabel = document.getElementById("hintLabel");
+      const replayBtn = document.getElementById("replayBtn");
+      const glowRange = document.getElementById("glowRange");
+
+      glowRange.addEventListener("input", (e) => {
+        CONFIG.glowIntensity = parseFloat(e.target.value);
+      });
+
+      // Hentikan propagasi klik pada panel kontrol agar tidak memicu ledakan
+      document.querySelector(".hud").addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+      });
+
+      let width = 0;
+      let height = 0;
+      let dpr = 1;
+      let perspective = 680;
+
+      // Pre-render sprite cahaya partikel dengan inti tajam agar teks tetap terbaca jelas
+      function createGlowSprite(innerColor, midColor, outerColor) {
+        const size = 64;
+        const off = document.createElement("canvas");
+        off.width = size;
+        off.height = size;
+        const octx = off.getContext("2d");
+        const r = size / 2;
+        const grad = octx.createRadialGradient(r, r, 0, r, r, r);
+        grad.addColorStop(0.0, innerColor);
+        grad.addColorStop(0.22, midColor);
+        grad.addColorStop(0.55, outerColor);
+        grad.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+        octx.fillStyle = grad;
+        octx.fillRect(0, 0, size, size);
+        return off;
+      }
+
+      const sprites = [
+        createGlowSprite(
+          "rgba(255,255,255,0.92)",
+          "rgba(165,243,252,0.70)",
+          "rgba(34,211,238,0.10)",
+        ),
+        createGlowSprite(
+          "rgba(224,249,255,0.86)",
+          "rgba(34,211,238,0.65)",
+          "rgba(6,182,212,0.09)",
+        ),
+        createGlowSprite(
+          "rgba(191,219,254,0.82)",
+          "rgba(59,130,246,0.58)",
+          "rgba(29,78,216,0.08)",
+        ),
+      ];
+
+      let state = "heart"; // "heart" | "exploded" | "text"
+      let stateEnteredAt = performance.now();
+      let explodeNextTarget = "text";
+      let heartTargets = [];
+      let textTargets = [];
+      const particles = [];
+      const vortexParticles = [];
+
+      const pointer = { x: 0, y: 0, active: false };
+
+      function buildHeartTargets(count) {
+        const targets = new Array(count);
+        const minDim = Math.min(width, height);
+        const scale = minDim * (width < 640 ? 0.0115 : 0.0102);
+
+        for (let i = 0; i < count; i++) {
+          const t = Math.random() * Math.PI * 2;
+          const sinT = Math.sin(t);
+          const hx = 16 * sinT * sinT * sinT;
+          const hy = -(
+            13 * Math.cos(t) -
+            5 * Math.cos(2 * t) -
+            2 * Math.cos(3 * t) -
+            Math.cos(4 * t)
+          );
+
+          const isEdge = i < count * 0.56;
+          const radial = isEdge
+            ? 0.86 + Math.random() * 0.16
+            : Math.pow(Math.random(), 0.45) * 0.95;
+          const thickness = Math.sqrt(
+            Math.max(0.02, 1 - radial * radial * 0.7),
+          );
+          const zSign = Math.random() < 0.5 ? -1 : 1;
+          const z =
+            zSign * Math.pow(Math.random(), 0.7) * (scale * 6.8) * thickness;
+
+          const isWisp = i > count * 0.93;
+          if (isWisp) {
+            const drop = Math.random();
+            targets[i] = {
+              x: (Math.random() - 0.5) * minDim * (0.04 + drop * 0.14),
+              y: scale * 15.5 + drop * minDim * 0.12,
+              z: (Math.random() - 0.5) * scale * 5.0,
+            };
+          } else {
+            targets[i] = {
+              x: hx * radial * scale,
+              y: hy * radial * scale - minDim * 0.04,
+              z: z,
+            };
+          }
+        }
+        return targets;
+      }
+
+      function buildTextTargets(text, count) {
+        const clean = (text || "").trim() || "hehe lopyu bb!";
+        const off = document.createElement("canvas");
+        const maxW = Math.min(1200, Math.max(340, width * 0.9));
+        const maxH = Math.min(360, Math.max(160, height * 0.42));
+        off.width = Math.floor(maxW);
+        off.height = Math.floor(maxH);
+
+        const octx = off.getContext("2d");
+        octx.clearRect(0, 0, off.width, off.height);
+        octx.fillStyle = "#ffffff";
+        octx.textAlign = "center";
+        octx.textBaseline = "middle";
+
+        let fontSize = Math.floor(off.height * 0.54);
+        const fitWidth = off.width * 0.86;
+        while (fontSize > 22) {
+          octx.font =
+            "600 " +
+            fontSize +
+            "px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+          if (octx.measureText(clean).width <= fitWidth) break;
+          fontSize -= 3;
+        }
+
+        octx.fillText(clean, off.width / 2, off.height / 2);
+
+        const img = octx.getImageData(0, 0, off.width, off.height).data;
+        const lit = [];
+        const step = width < 640 ? 2 : 3;
+
+        for (let y = 0; y < off.height; y += step) {
+          for (let x = 0; x < off.width; x += step) {
+            if (img[(y * off.width + x) * 4 + 3] > 150) {
+              lit.push(x - off.width / 2, y - off.height / 2);
+            }
+          }
+        }
+
+        const total = lit.length / 2;
+        if (total === 0) return buildHeartTargets(count);
+
+        const targets = new Array(count);
+        const stride = Math.max(1, Math.floor(total / count));
+        let cursor = 0;
+
+        for (let i = 0; i < count; i++) {
+          const idx =
+            i < total ? cursor % total : Math.floor(Math.random() * total);
+          cursor += stride + 13;
+          targets[i] = {
+            x: lit[idx * 2] + (Math.random() - 0.5) * 0.8,
+            y: lit[idx * 2 + 1] + (Math.random() - 0.5) * 0.8,
+            z: (Math.random() - 0.5) * 8,
+          };
+        }
+        return targets;
+      }
+
+      function initParticles() {
+        particles.length = 0;
+        heartTargets = buildHeartTargets(CONFIG.particleCount);
+        textTargets = buildTextTargets(TARGET_TEXT, CONFIG.particleCount);
+
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+          const t = heartTargets[i];
+          particles.push({
+            x: t.x,
+            y: t.y,
+            z: t.z,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            size: 3.5 + Math.pow(Math.random(), 2.2) * 9.5,
+            spriteIdx: Math.random() > 0.84 ? 0 : Math.random() > 0.35 ? 1 : 2,
+            phase: Math.random() * Math.PI * 2,
+            heat: 0,
+          });
+        }
+
+        vortexParticles.length = 0;
+        for (let i = 0; i < CONFIG.vortexCount; i++) {
+          vortexParticles.push({
+            angle: Math.random() * Math.PI * 2,
+            radius: 0.25 + Math.random() * 0.75,
+            speed: 0.012 + Math.random() * 0.025,
+            size: 4 + Math.random() * 8,
+            spriteIdx: Math.random() > 0.7 ? 0 : 1,
+          });
+        }
+      }
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        perspective = Math.max(480, Math.min(width, height) * 0.95);
+
+        heartTargets = buildHeartTargets(CONFIG.particleCount);
+        textTargets = buildTextTargets(TARGET_TEXT, CONFIG.particleCount);
+      }
+
+      function triggerExplosion(clientX, clientY) {
+        const cx = typeof clientX === "number" ? clientX - width / 2 : 0;
+        const cy = typeof clientY === "number" ? clientY - height / 2 : 0;
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const dx = p.x - cx * 0.35;
+          const dy = p.y - cy * 0.35;
+          const dz = p.z;
+          const dist = Math.max(24, Math.hypot(dx, dy, dz));
+          const blast = (14 + Math.random() * 24) * (160 / (120 + dist));
+          const swirl = (Math.random() - 0.5) * 14;
+
+          p.vx += (dx / dist) * blast - (dz / dist) * swirl;
+          p.vy += (dy / dist) * blast + (Math.random() - 0.42) * 12;
+          p.vz += (dz / dist) * blast + (dx / dist) * swirl;
+          p.heat = 1;
+        }
+
+        explodeNextTarget = state === "text" ? "heart" : "text";
+        state = "exploded";
+        stateEnteredAt = performance.now();
+        hintLabel.textContent =
+          explodeNextTarget === "text"
+            ? "Menyatu membentuk " + TARGET_TEXT + "..."
+            : "Kembali membentuk hati...";
+      }
+
+      function resetToHeart() {
+        state = "heart";
+        stateEnteredAt = performance.now();
+        hintLabel.textContent = "Klik / sentuh untuk meledak";
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].heat = 0.45;
+        }
+      }
+
+      canvas.addEventListener("pointermove", (e) => {
+        pointer.x = e.clientX - width / 2;
+        pointer.y = e.clientY - height / 2;
+        pointer.active = true;
+      });
+
+      canvas.addEventListener("pointerleave", () => {
+        pointer.active = false;
+      });
+
+      canvas.addEventListener("pointerdown", (e) => {
+        pointer.x = e.clientX - width / 2;
+        pointer.y = e.clientY - height / 2;
+        pointer.active = true;
+        triggerExplosion(e.clientX, e.clientY);
+      });
+
+      replayBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        resetToHeart();
+      });
+
+      window.addEventListener("resize", resize);
+
+      let sizeScale = 1.0;
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+
+        const elapsedSec = now * 0.001;
+        const sinceState = now - stateEnteredAt;
+        const glow = CONFIG.glowIntensity;
+
+        if (state === "heart" && sinceState > CONFIG.autoMorphDelayMs) {
+          triggerExplosion(width / 2, height / 2);
+          explodeNextTarget = "text";
+        } else if (
+          state === "exploded" &&
+          sinceState > CONFIG.explodeMorphDelayMs
+        ) {
+          state = explodeNextTarget;
+          stateEnteredAt = now;
+          hintLabel.textContent =
+            state === "text"
+              ? "Klik / sentuh untuk kembali ke hati"
+              : "Klik / sentuh untuk meledak";
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle =
+          state === "exploded"
+            ? "rgba(3, 7, 18, 0.36)"
+            : "rgba(3, 7, 18, 0.54)";
+        ctx.fillRect(0, 0, width, height);
+
+        const centerX = width * 0.5;
+        const centerY = height * 0.46;
+
+        ctx.globalCompositeOperation = "lighter";
+
+        // Kolam cahaya lembut di bawah objek (mengikuti pengaturan glow)
+        const minDim = Math.min(width, height);
+        const poolY = centerY + minDim * 0.255;
+        const poolRx = minDim * 0.19;
+        const poolRy = minDim * 0.042;
+
+        const baseGlow = ctx.createRadialGradient(
+          centerX,
+          poolY,
+          4,
+          centerX,
+          poolY,
+          poolRx * 1.25,
+        );
+        baseGlow.addColorStop(
+          0.0,
+          "rgba(103, 232, 249, " + (0.28 * glow).toFixed(3) + ")",
+        );
+        baseGlow.addColorStop(
+          0.55,
+          "rgba(6, 182, 212, " + (0.12 * glow).toFixed(3) + ")",
+        );
+        baseGlow.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = baseGlow;
+        ctx.beginPath();
+        ctx.ellipse(
+          centerX,
+          poolY,
+          poolRx * 1.25,
+          poolRy * 1.4,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+
+        for (let i = 0; i < vortexParticles.length; i++) {
+          const vp = vortexParticles[i];
+          vp.angle += vp.speed;
+          const vx = centerX + Math.cos(vp.angle) * poolRx * vp.radius;
+          const vy = poolY + Math.sin(vp.angle) * poolRy * vp.radius;
+          const s = vp.size * (0.75 + 0.35 * Math.sin(vp.angle));
+          ctx.globalAlpha = 0.38 * glow;
+          ctx.drawImage(
+            sprites[vp.spriteIdx],
+            vx - s * 0.5,
+            vy - s * 0.5,
+            s,
+            s,
+          );
+        }
+
+        if (state === "text") {
+          const textHalo = ctx.createRadialGradient(
+            centerX,
+            centerY,
+            10,
+            centerX,
+            centerY,
+            Math.min(width * 0.42, 380),
+          );
+          textHalo.addColorStop(
+            0.0,
+            "rgba(34, 211, 238, " + (0.08 * glow).toFixed(3) + ")",
+          );
+          textHalo.addColorStop(
+            0.6,
+            "rgba(14, 165, 233, " + (0.03 * glow).toFixed(3) + ")",
+          );
+          textHalo.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = textHalo;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        const isHeart = state === "heart";
+        const isExploded = state === "exploded";
+        const targets = isHeart ? heartTargets : textTargets;
+
+        // Perkecil ukuran titik saat mode teks agar setiap huruf terbaca tajam
+        const targetSizeScale = state === "text" ? 0.48 : 1.0;
+        sizeScale += (targetSizeScale - sizeScale) * 0.08;
+
+        const rotY = isHeart ? elapsedSec * 0.42 : 0;
+        const cosR = Math.cos(rotY);
+        const sinR = Math.sin(rotY);
+        const pulse = isHeart ? 1 + Math.sin(elapsedSec * 3.2) * 0.035 : 1;
+        const alphaScale = state === "text" ? 0.55 * glow : 0.85 * glow;
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const t = targets[i];
+
+          if (!isExploded && t) {
+            const tx = (isHeart ? t.x * cosR - t.z * sinR : t.x) * pulse;
+            const tz = (isHeart ? t.x * sinR + t.z * cosR : t.z) * pulse;
+            const ty = t.y * pulse;
+
+            p.vx += (tx - p.x) * CONFIG.springEase;
+            p.vy += (ty - p.y) * CONFIG.springEase;
+            p.vz += (tz - p.z) * CONFIG.springEase;
+          } else {
+            p.vy += Math.sin(elapsedSec * 3.5 + i) * 0.08;
+          }
+
+          if (pointer.active) {
+            const dx = p.x - pointer.x;
+            const dy = p.y - pointer.y;
+            const distSq = dx * dx + dy * dy;
+            const maxR = CONFIG.mouseRepelRadius;
+            if (distSq < maxR * maxR && distSq > 1) {
+              const dist = Math.sqrt(distSq);
+              const force = (1 - dist / maxR) * CONFIG.mouseRepelStrength * 4.5;
+              p.vx += (dx / dist) * force;
+              p.vy += (dy / dist) * force;
+              p.vz += (Math.random() - 0.5) * force;
+              p.heat = Math.min(1, p.heat + 0.35);
+            }
+          }
+
+          p.vx *= CONFIG.friction;
+          p.vy *= CONFIG.friction;
+          p.vz *= CONFIG.friction;
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.z += p.vz;
+          p.heat *= 0.94;
+
+          const depthScale = perspective / Math.max(120, perspective + p.z);
+          const sx = centerX + p.x * depthScale;
+          const sy = centerY + p.y * depthScale;
+          const twinkle = 0.76 + 0.24 * Math.sin(elapsedSec * 3.0 + p.phase);
+          const drawSize =
+            p.size * sizeScale * depthScale * (1 + p.heat * 0.45);
+
+          ctx.globalAlpha = Math.min(
+            0.95,
+            alphaScale * (0.72 + p.heat * 0.28) * twinkle,
+          );
+          const sprite = p.heat > 0.45 ? sprites[0] : sprites[p.spriteIdx];
+          ctx.drawImage(
+            sprite,
+            sx - drawSize * 0.5,
+            sy - drawSize * 0.5,
+            drawSize,
+            drawSize,
+          );
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      resize();
+      initParticles();
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
